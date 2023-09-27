@@ -1,0 +1,10 @@
+;; Get Dynamic Block Visibility State  -  Lee Mac
+;; Returns the value of the Visibility Parameter of a Dynamic Block (if present)
+;; blk - [vla] VLA Dynamic Block Reference object
+;; Returns: [str] Value of Visibility Parameter, else nil
+
+(defun LM:getvisibilitystate ( blk / vis )
+    (if (setq vis (LM:getvisibilityparametername blk))
+        (LM:getdynpropvalue blk vis)
+    )
+)
