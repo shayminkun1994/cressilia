@@ -1,0 +1,15 @@
+;; Set Dynamic Block Visibility State  -  Lee Mac
+;; Sets the Visibility Parameter of a Dynamic Block (if present) to a specific value (if allowed)
+;; blk - [vla] VLA Dynamic Block Reference object
+;; val - [str] Visibility State Parameter value
+;; Returns: [str] New value of Visibility Parameter, else nil
+
+(defun LM:SetVisibilityState ( blk val / vis )
+    (if
+        (and
+            (setq vis (LM:getvisibilityparametername blk))
+            (member (strcase val) (mapcar 'strcase (LM:getdynpropallowedvalues blk vis)))
+        )
+        (LM:setdynpropvalue blk vis val)
+    )
+)
