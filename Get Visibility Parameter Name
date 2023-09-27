@@ -1,0 +1,38 @@
+;; Get Visibility Parameter Name  -  Lee Mac
+;; Returns the name of the Visibility Parameter of a Dynamic Block (if present)
+;; blk - [vla] VLA Dynamic Block Reference object
+;; Returns: [str] Name of Visibility Parameter, else nil
+
+(defun LM:getvisibilityparametername ( blk / vis )
+    (if
+        (and
+            (vlax-property-available-p blk 'effectivename)
+            (setq blk
+                (vla-item
+                    (vla-get-blocks (vla-get-document blk))
+                    (vla-get-effectivename blk)
+                )
+            )
+            (= :vlax-true (vla-get-isdynamicblock blk))
+            (= :vlax-true (vla-get-hasextensiondictionary blk))
+            (setq vis
+                (vl-some
+                   '(lambda ( pair )
+                        (if
+                            (and
+                                (= 360 (car pair))
+                                (= "BLOCKVISIBILITYPARAMETER" (cdr (assoc 0 (entget (cdr pair)))))
+                            )
+                            (cdr pair)
+                        )
+                    )
+                    (dictsearch
+                        (vlax-vla-object->ename (vla-getextensiondictionary blk))
+                        "ACAD_ENHANCEDBLOCK"
+                    )
+                )
+            )
+        )
+        (cdr (assoc 301 (entget vis)))
+    )
+)
