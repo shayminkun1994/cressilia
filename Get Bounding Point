@@ -1,0 +1,22 @@
+(defun c:al-getboundingbox ()
+
+(vl-load-com)
+
+(setq util (vla-get-utility
+                   (vla-get-activedocument
+                        (vlax-get-acad-object))))
+
+(vla-getentity util 'obj 'ip "\nSelect Object: ")
+
+(vla-GetBoundingBox obj 'minpoint 'maxpoint)
+
+;minpoint contains the minimum point of the bounding box
+;maxpoint contains the maximum point of the bounding box
+
+(princ minpoint)
+(terpri)
+(princ maxpoint)
+
+(princ)
+
+);defun
