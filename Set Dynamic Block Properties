@@ -1,0 +1,14 @@
+;; Set Dynamic Block Properties  -  Lee Mac
+;; Modifies values of Dynamic Block properties using a supplied association list.
+;; blk - [vla] VLA Dynamic Block Reference object
+;; lst - [lst] Association list of ((<Property> . <Value>) ... )
+;; Returns: nil
+
+(defun LM:setdynprops ( blk lst / itm )
+    (setq lst (mapcar '(lambda ( x ) (cons (strcase (car x)) (cdr x))) lst))
+    (foreach x (vlax-invoke blk 'getdynamicblockproperties)
+        (if (setq itm (assoc (strcase (vla-get-propertyname x)) lst))
+            (vla-put-value x (vlax-make-variant (cdr itm) (vlax-variant-type (vla-get-value x))))
+        )
+    )
+)
