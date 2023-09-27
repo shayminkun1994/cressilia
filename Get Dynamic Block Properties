@@ -1,0 +1,10 @@
+;; Get Dynamic Block Properties  -  Lee Mac
+;; Returns an association list of Dynamic Block properties & values.
+;; blk - [vla] VLA Dynamic Block Reference object
+;; Returns: [lst] Association list of ((<prop> . <value>) ... )
+
+(defun LM:getdynprops ( blk )
+    (mapcar '(lambda ( x ) (cons (vla-get-propertyname x) (vlax-get x 'value)))
+        (vlax-invoke blk 'getdynamicblockproperties)
+    )
+)
