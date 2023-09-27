@@ -1,0 +1,18 @@
+;; Toggle Dynamic Block Flip State  -  Lee Mac
+;; Toggles the Flip parameter if present in a supplied Dynamic Block.
+;; blk - [vla] VLA Dynamic Block Reference object
+;; Return: [int] New Flip Parameter value
+
+(defun LM:toggleflipstate ( blk )
+    (vl-some
+       '(lambda ( prp / rtn )
+            (if (equal '(0 1) (vlax-get prp 'allowedvalues))
+                (progn
+                    (vla-put-value prp (vlax-make-variant (setq rtn (- 1 (vlax-get prp 'value))) vlax-vbinteger))
+                    rtn
+                )
+            )
+        )
+        (vlax-invoke blk 'getdynamicblockproperties)
+    )
+)
