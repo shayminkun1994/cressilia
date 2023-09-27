@@ -1,0 +1,12 @@
+;; Get Dynamic Block Property Allowed Values  -  Lee Mac
+;; Returns the allowed values for a specific Dynamic Block property.
+;; blk - [vla] VLA Dynamic Block Reference object
+;; prp - [str] Dynamic Block property name (case-insensitive)
+;; Returns: [lst] List of allowed values for property, else nil if no restrictions
+
+(defun LM:getdynpropallowedvalues ( blk prp )
+    (setq prp (strcase prp))
+    (vl-some '(lambda ( x ) (if (= prp (strcase (vla-get-propertyname x))) (vlax-get x 'allowedvalues)))
+        (vlax-invoke blk 'getdynamicblockproperties)
+    )
+)
