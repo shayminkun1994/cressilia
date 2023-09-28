@@ -1,0 +1,785 @@
+(defun c:ttr () 
+  (setq acadDocument (vla-get-activedocument (vlax-get-acad-object)))
+  (setq mspace (vla-get-modelspace acadDocument))
+  (setq layercur (list (cons 8 (getvar "CLAYER"))))
+  (setq listfilter '((-4 . "<OR")
+                     (0 . "POLYLINE")
+                     (0 . "LWPOLYLINE")
+                     (-4 . "OR>")
+                     (62 . 2)
+                    )
+  )
+  (setq listfilter (append listfilter layercur))
+  (setq enitys (ssget "_X" 
+                      listfilter
+               )
+  )
+  (if (null heightroom) 
+    (setq heightroom 1)
+  )
+  (setq txtprompt (strcat "\n Nhap chieu cao phong:<" 
+                          (rtos heightroom 2 1)
+                          ">"
+                  )
+  )
+  (initget 6)
+  (setq heightrmtxt (getreal txtprompt))
+  (if (= heightrmtxt nil) 
+    (setq heightroom heightroom)
+    (setq heightroom heightrmtxt)
+  )
+  (if (null heigtoutsidewall) 
+    (setq heigtoutsidewall 1)
+  )
+  (setq txtprompt (strcat "\n Nhap chieu cao tuong ngoai:<" 
+                          (rtos heigtoutsidewall 2 1)
+                          ">"
+                  )
+  )
+  (initget 6)
+  (setq heightrmtxt (getreal txtprompt))
+  (if (= heightrmtxt nil) 
+    (setq heigtoutsidewall heigtoutsidewall)
+    (setq heigtoutsidewall heightrmtxt)
+  )
+  (if (null directionnorth) 
+    (setq directionnorth (/ pi 2))
+  )
+  (setq txtprompt (strcat "\nHuong bac :<" (rtos directionnorth 2) ">"))
+  (setq heightrmtxt (getangle txtprompt))
+  (if (= heightrmtxt nil) 
+    (setq directionnorth directionnorth)
+    (setq directionnorth heightrmtxt)
+  )
+  ;*********** Tao bang *********************
+  (setq inserttablept (vlax-3d-point (getpoint "\nDiem dat bang")))
+  (setq numrows (+ (sslength enitys) 2))
+  (setq numcolumns 21)
+  (setq tableobject (vla-addtable mspace inserttablept numrows numcolumns 500 2000))
+  (setq directiontable (list "N" "NNW" "NW" "WNW" "W" "WSW" "SW" "SSW" "S" "SSE" "SE" 
+                             "ESE" "E" "ENE" "NE" "NNE"
+                       )
+  )
+  (setq cntcl 0)
+  (vla-settext tableobject 1 0 "Room Name")
+  (vla-settext tableobject 1 1 "Area")
+  (vla-settext tableobject 1 2 "Partition")
+  (vla-settext tableobject 1 3 "Room height")
+  (vla-settext tableobject 1 4 "Outside wall Height")
+  (repeat (length directiontable) 
+    (vla-settext 
+      tableobject
+      1
+      (+ cntcl 5)
+      (nth cntcl directiontable)
+    )
+    (setq cntcl (+ 1 cntcl))
+  )
+  (vla-settextheight tableobject acDataRow 200)
+  (vla-settextheight tableobject acHeaderRow 200)
+  (vla-settextheight tableobject acTitleRow 200)
+
+  ;********* 1. list room *********************
+  (setq roomcount 0)
+  (repeat (sslength enitys)  ;rp emotys 1
+    (setq itemdxf (entget (ssname enitys roomcount)))
+    (setq objroom1 (vlax-ename->vla-object (ssname enitys roomcount)))
+    (vla-put-Elevation objroom1 0)
+    (setq listpointcp (vla-get-coordinates objroom1))
+    (setq listponitcp ; list vertex of object ( room )
+                      (vlax-safearray->list 
+                        (vlax-variant-value listpointcp)
+                      )
+    )
+    (setq cntitem 0)
+    (setq numofvertex (vlax-curve-getEndParam objroom1))
+    (setq countif 0)
+    (repeat (atoi (rtos numofvertex))  ;repeat numofvertext
+      (if (/= (vla-GetBulge objroom1 cntitem) 0) 
+        (progn 
+          (setq ptvertex1 (vlax-curve-getPointAtParam objroom1 cntitem))
+          (setq ptvertex2 (vlax-curve-getPointAtParam 
+                            objroom1
+                            (+ cntitem 1)
+                          )
+          )
+          (setq dis (- (vlax-curve-getDistAtParam objroom1 (+ cntitem 1)) 
+                       (vlax-curve-getDistAtParam objroom1 cntitem)
+                    )
+          )
+          (setq ptmid (vlax-curve-getPointAtDist 
+                        objroom1
+                        (+ (vlax-curve-getDistAtParam objroom1 cntitem) 
+                           (/ dis 2)
+                        )
+                      )
+          )
+          (setq listponitcp (LM:insertnth 
+                              (car ptmid)
+                              (+ (* (+ cntitem 1) 2) countif)
+                              listponitcp
+                            )
+          )
+          (setq listponitcp (LM:insertnth 
+                              (cadr ptmid)
+                              (+ (+ (* (+ cntitem 1) 2) 1) countif)
+                              listponitcp
+                            )
+          )
+          (setq countif (+ countif 2))
+        )
+      ) ;end if (vla-getbulge...
+      (setq cntitem (1+ cntitem))
+    ) ;end repeat numofvertext
+
+    (setq aa (vla-get-area objroom1))
+    ;*********** 1.1 get bounding box**************
+    (vla-GetBoundingBox objroom1 'minpoint 'maxpoint)
+    (setq minpoint (vlax-safearray->list minpoint))
+    (setq maxpoint (vlax-safearray->list maxpoint))
+    (setq interpoint (mapcar 
+                       '(lambda (valuex valuey) 
+                          (/ (+ valuex valuey) 2)
+                        )
+                       minpoint
+                       maxpoint
+                     )
+    )
+    ;*******1.2 vung quet doi tuong trong zone *********
+
+    (setq listcp (list))
+    (setq listponitcp1 listponitcp)
+    (while (> (length listponitcp1) 1)  ;while 1
+      (setq listcpex (list (list (car listponitcp1) (cadr listponitcp1))))
+      (setq listcp (append listcp listcpex))
+      (setq listponitcp1 (LM:RemoveNth 0 listponitcp1))
+      (setq listponitcp1 (LM:RemoveNth 0 listponitcp1))
+    ) ;while 1
+
+    ;*********** 1.3 ten room ***************
+    (setq listfilter (append '((0 . "TEXT") (62 . 3)) layercur))
+    (if (setq textroom (ssget "_CP" listcp listfilter)) 
+      ;if 1.3
+      (progn 
+        (setq ename (entget (ssname textroom 0)))
+        (setq txtroom (cdr (assoc 1 ename)))
+        (setq point (assoc 10 ename))
+        (setq inspoint (list (cadr point) (- (caddr point) 100)))
+        (vla-settext tableobject (+ 2 roomcount) 0 txtroom)
+      )
+      (setq inspoint interpoint)
+    ) ;end if 1.3
+    ;********** 1.4 tuong ngoai *****************
+    (setq listfilter (append 
+                       '((-4 . "<OR")
+                         (0 . "POLYLINE")
+                         (0 . "LWPOLYLINE")
+                         (-4 . "OR>")
+                         (62 . 4)
+                        )
+                       layercur
+                     )
+    )
+    (if  ;if outside wall
+      (setq outsidewall (ssget "_CP" 
+                               listcp
+                               listfilter
+                        )
+      )
+      (progn 
+        (setq wallcount 0)
+        (setq hb   0
+              hn   0
+              ht   0
+              hd   0
+              hdb  0
+              hdn  0
+              htn  0
+              htb  0
+              hbdb 0
+              hddb 0
+              hddn 0
+              hndn 0
+              hntn 0
+              httn 0
+              httb 0
+              hbtb 0
+        )
+        (repeat (sslength outsidewall)  ;rp 1.4 outsidewall
+          (setq objwall1 (vlax-ename->vla-object (ssname outsidewall wallcount)))
+          (vla-put-elevation objwall1 0)
+          (setq listcoorwall (vla-get-coordinates objwall1))
+          (setq listcoorwall (vlax-safearray->list 
+                               (vlax-variant-value listcoorwall)
+                             )
+          )
+          ;************ 1.4.1 kiem tra tuong ngoai co duong cong hay khong *******************
+          (setq objwall141 (entget (ssname outsidewall wallcount)))
+          (setq count141 0)
+          (setq numofvertext141 (vlax-curve-getendparam objwall1))
+          (setq count141x 0)
+          (repeat (atoi (rtos numofvertext141)) 
+            (if (/= (vla-getbulge objwall1 count141) 0) 
+              (progn 
+                (setq ptvertex1 (vlax-curve-getPointAtParam 
+                                  objwall1
+                                  count141
+                                )
+                )
+                (setq ptvertex2 (vlax-curve-getPointAtParam 
+                                  objwall1
+                                  (+ count141 1)
+                                )
+                )
+                (setq dis (- 
+                            (vlax-curve-getDistAtParam 
+                              objwall1
+                              (+ count141 1)
+                            )
+                            (vlax-curve-getDistAtParam 
+                              objwall1
+                              count141
+                            )
+                          )
+                )
+                (setq ptmid (vlax-curve-getPointAtDist 
+                              objwall1
+                              (+ 
+                                (vlax-curve-getDistAtParam 
+                                  objwall1
+                                  count141
+                                )
+                                (/ dis 2)
+                              )
+                            )
+                )
+                (setq listcoorwall (LM:insertnth 
+                                     (car ptmid)
+                                     (+ (* (+ count141 1) 2) count141x)
+                                     listcoorwall
+                                   )
+                )
+                (setq listcoorwall (LM:insertnth 
+                                     (cadr ptmid)
+                                     (+ (+ (* (+ count141 1) 2) 1) 
+                                        count141x
+                                     )
+                                     listcoorwall
+                                   )
+                )
+                (setq count141x (+ count141x 2))
+              )
+            ) ; end if (/= (vla-getbulge objwall1 count141)
+            (setq count141 (1+ count141))
+          ) ;end repeat numofvertext141
+          ;************ 1.4.2 kiem tra tuong ngoai co kin hay khong
+          (if (= (vla-get-closed objwall1) :vlax-true) 
+            (setq listcoorwall (append listcoorwall 
+                                       (list (car listcoorwall) 
+                                             (cadr listcoorwall)
+                                       )
+                               )
+            )
+          )
+
+
+
+          ;*********** 1.4.3 tinh toan do dai tuong ngoai va phan huong************************
+          (setq cntxy 0)
+          (repeat (- (/ (length listcoorwall) 2) 1) 
+            (setq x (list (nth cntxy listcoorwall) 
+                          (nth (+ cntxy 1) listcoorwall)
+                    )
+                  y (list (nth (+ cntxy 2) listcoorwall) 
+                          (nth (+ cntxy 3) listcoorwall)
+                    )
+            )
+
+            ;************* 1.4.3 + tao diem xet huong **************
+            (setq listmidpt (vlax-curve-getpointatdist 
+                              objwall1
+                              (+ 
+                                (/ 
+                                  (- (vlax-curve-getdistAtPoint objwall1 y) 
+                                     (vlax-curve-getdistAtPoint objwall1 x)
+                                  )
+                                  2
+                                )
+                                (vlax-curve-getdistAtPoint objwall1 x)
+                              )
+                            )
+            )
+            (setq anglexy (angle x y))
+            (setq xpt (polar listmidpt anglexy 50))
+            (if (<= anglexy (/ pi 2)) 
+              (progn 
+                (setq anglexy1 (+ anglexy (/ pi 2)))
+                (setq anglexy2 (+ anglexy (+ (/ pi 2) pi)))
+              )
+            )
+            (if (> anglexy (/ pi 2)) 
+              (progn 
+                (setq anglexy1 (- anglexy (/ pi 2)))
+                (setq anglexy2 (+ anglexy (/ pi 2)))
+              )
+            )
+            (setq 1pt (polar listmidpt anglexy1 100))
+            (setq 2pt (polar listmidpt anglexy2 100))
+            (setq add1pt (vla-addray 
+                           mspace
+                           (vlax-3d-point 1pt)
+                           (vlax-3d-point listmidpt)
+                         )
+            )
+            (setq add2pt (vla-addray 
+                           mspace
+                           (vlax-3d-point 2pt)
+                           (vlax-3d-point listmidpt)
+                         )
+            )
+            (setq raypt1 (vla-intersectwith objroom1 add1pt acExtendNone))
+            (setq raypt2 (vla-intersectwith objroom1 add2pt acExtendNone))
+            (setq abc1 (vlax-safearray->list (vlax-variant-value raypt1)))
+            (setq abc2 (vlax-safearray->list (vlax-variant-value raypt2)))
+            (if (/= (rem (length abc1) 2) 0) 
+              (setq interpoint 1pt)
+            )
+            (if (/= (rem (length abc2) 2) 0) 
+              (setq interpoint 2pt)
+            )
+
+
+            (vla-delete add1pt)
+            (vla-delete add2pt)
+            ;******* 1.4.3 ++ tinh toan truyen data **************
+
+            (setq z (perpendicular_from_point_to_line 
+                      listmidpt
+                      xpt
+                      interpoint
+                    )
+            )
+            (setq angled (angle interpoint z))
+            ;**********1.4.3 +++ QUy Doi goc *********************
+            (apply 
+              '(lambda (c d / tg) 
+                 (setq tg (- c (/ pi 2)))
+                 (if (< c (/ pi 2)) 
+                   (setq anglexyz (- (+ d (* 2 pi)) 
+                                     (- (+ c (* 2 pi)) (/ pi 2))
+                                  )
+                   )
+                 )
+                 (if (>= c (/ pi 2)) 
+                   (progn 
+                     (if (>= d tg) 
+                       (setq anglexyz (- d tg))
+                     )
+                     (if (< d tg) 
+                       (setq anglexyz (- (* 2 pi) (- tg d)))
+                     )
+                   )
+                 )
+
+                 (setq anglexyz (cvunit anglexyz "radian" "degree"))
+               )
+              (list directionnorth angled)
+            )
+
+            ;*********** Tinh toan Goc ***********************
+
+
+
+
+            (setq x1 (vlax-curve-getParamAtPoint objwall1 x))
+            (setq yss (list (car (vlax-curve-getPointAtParam objwall1 0)) 
+                            (cadr (vlax-curve-getPointAtParam objwall1 0))
+                      )
+            )
+            (if (equal yss y)  ;if...
+              (setq y1 (vlax-curve-getendparam objwall1))
+              (setq y1 (vlax-curve-getParamAtPoint objwall1 y))
+            ) ;end if (=(vlax-curve-getPointAtParam objwall1 0) y)
+
+            ;*********** Dieu kien huong ***********************
+
+            (cond 
+              ((or (<= anglexyz 11.25) (> anglexyz 348.75))
+               (setq hd (+ hd 
+                           (- (vlax-curve-getdistatparam objwall1 y1) 
+                              (vlax-curve-getdistatparam objwall1 x1)
+                           )
+                        )
+               )
+              )
+              ((and (<= anglexyz 33.75) (> anglexyz 11.25))
+               (setq hddb (+ hddb 
+                             (- (vlax-curve-getdistatparam objwall1 y1) 
+                                (vlax-curve-getdistatparam objwall1 x1)
+                             )
+                          )
+               )
+              )
+              ((and (<= anglexyz 56.25) (> anglexyz 33.75))
+               (setq hdb (+ hdb 
+                            (- (vlax-curve-getdistatparam objwall1 y1) 
+                               (vlax-curve-getdistatparam objwall1 x1)
+                            )
+                         )
+               )
+              )
+              ((and (<= anglexyz 78.75) (> anglexyz 56.25))
+               (setq hbdb (+ hbdb 
+                             (- (vlax-curve-getdistatparam objwall1 y1) 
+                                (vlax-curve-getdistatparam objwall1 x1)
+                             )
+                          )
+               )
+              )
+              ((and (<= anglexyz 101.25) (> anglexyz 78.75))
+               (setq hb (+ hb 
+                           (- (vlax-curve-getdistatparam objwall1 y1) 
+                              (vlax-curve-getdistatparam objwall1 x1)
+                           )
+                        )
+               )
+              )
+              ((and (<= anglexyz 123.75) (> anglexyz 101.25))
+               (setq hbtb (+ hbtb 
+                             (- (vlax-curve-getdistatparam objwall1 y1) 
+                                (vlax-curve-getdistatparam objwall1 x1)
+                             )
+                          )
+               )
+              )
+              ((and (<= anglexyz 146.25) (> anglexyz 123.75))
+               (setq htb (+ htb 
+                            (- (vlax-curve-getdistatparam objwall1 y1) 
+                               (vlax-curve-getdistatparam objwall1 x1)
+                            )
+                         )
+               )
+              )
+              ((and (<= anglexyz 168.75) (> anglexyz 146.25))
+               (setq httb (+ httb 
+                             (- (vlax-curve-getdistatparam objwall1 y1) 
+                                (vlax-curve-getdistatparam objwall1 x1)
+                             )
+                          )
+               )
+              )
+              ((and (<= anglexyz 191.25) (> anglexyz 168.75))
+               (setq ht (+ ht 
+                           (- (vlax-curve-getdistatparam objwall1 y1) 
+                              (vlax-curve-getdistatparam objwall1 x1)
+                           )
+                        )
+               )
+              )
+              ((and (<= anglexyz 213.75) (> anglexyz 191.25))
+               (setq httn (+ httn 
+                             (- (vlax-curve-getdistatparam objwall1 y1) 
+                                (vlax-curve-getdistatparam objwall1 x1)
+                             )
+                          )
+               )
+              )
+              ((and (<= anglexyz 236.25) (> anglexyz 213.75))
+               (setq htn (+ htn 
+                            (- (vlax-curve-getdistatparam objwall1 y1) 
+                               (vlax-curve-getdistatparam objwall1 x1)
+                            )
+                         )
+               )
+              )
+              ((and (<= anglexyz 258.75) (> anglexyz 236.25))
+               (setq hntn (+ hntn 
+                             (- (vlax-curve-getdistatparam objwall1 y1) 
+                                (vlax-curve-getdistatparam objwall1 x1)
+                             )
+                          )
+               )
+              )
+              ((and (<= anglexyz 281.25) (> anglexyz 258.75))
+               (setq hn (+ hn 
+                           (- (vlax-curve-getdistatparam objwall1 y1) 
+                              (vlax-curve-getdistatparam objwall1 x1)
+                           )
+                        )
+               )
+              )
+              ((and (<= anglexyz 303.75) (> anglexyz 281.25))
+               (setq hndn (+ hndn 
+                             (- (vlax-curve-getdistatparam objwall1 y1) 
+                                (vlax-curve-getdistatparam objwall1 x1)
+                             )
+                          )
+               )
+              )
+              ((and (<= anglexyz 326.25) (> anglexyz 303.75))
+               (setq hdn (+ hdn 
+                            (- (vlax-curve-getdistatparam objwall1 y1) 
+                               (vlax-curve-getdistatparam objwall1 x1)
+                            )
+                         )
+               )
+              )
+              ((and (<= anglexyz 348.75) (> anglexyz 326.25))
+               (setq hddn (+ hddn 
+                             (- (vlax-curve-getdistatparam objwall1 y1) 
+                                (vlax-curve-getdistatparam objwall1 x1)
+                             )
+                          )
+               )
+              )
+            ) ;end cond
+            (setq cntxy (+ cntxy 2))
+          ) ;end rp 1.4 listcoordinates
+          (setq wallcount (+ wallcount 1))
+        ) ;end rp outside wall 1.4
+        ;******** 1.5 ghi thong so ra text **********
+        (setq htxt (list hb hn hd ht hdb hdn htn htb hbdb hddb hddn hndn httn hntn 
+                         httb hbtb
+                   )
+        )
+        (setq pttxt (list (car inspoint) (- (cadr inspoint) 800)))
+        (setq cnthtxt 0)
+        (repeat (length htxt)  ;repeat 1 htxt
+          (if (/= 0 (nth cnthtxt htxt))  ;if htxt
+            (progn 
+              (cond 
+                ((= 0 cnthtxt)
+                 (setq directionwall "N"
+                       tableposition 5
+                 )
+                )
+                ((= 1 cnthtxt)
+                 (setq directionwall "S"
+                       tableposition 13
+                 )
+                )
+                ((= 2 cnthtxt)
+                 (setq directionwall "E"
+                       tableposition 17
+                 )
+                )
+                ((= 3 cnthtxt)
+                 (setq directionwall "W"
+                       tableposition 9
+                 )
+                )
+                ((= 4 cnthtxt)
+                 (setq directionwall "NE"
+                       tableposition 19
+                 )
+                )
+                ((= 5 cnthtxt)
+                 (setq directionwall "SE"
+                       tableposition 15
+                 )
+                )
+                ((= 6 cnthtxt)
+                 (setq directionwall "SW"
+                       tableposition 11
+                 )
+                )
+                ((= 7 cnthtxt)
+                 (setq directionwall "NW"
+                       tableposition 7
+                 )
+                )
+                ((= 8 cnthtxt)
+                 (setq directionwall "NNE"
+                       tableposition 20
+                 )
+                )
+                ((= 9 cnthtxt)
+                 (setq directionwall "ENE"
+                       tableposition 18
+                 )
+                )
+                ((= 10 cnthtxt)
+                 (setq directionwall "ESE"
+                       tableposition 16
+                 )
+                )
+                ((= 11 cnthtxt)
+                 (setq directionwall "SSE"
+                       tableposition 14
+                 )
+                )
+                ((= 12 cnthtxt)
+                 (setq directionwall "WSW"
+                       tableposition 10
+                 )
+                )
+                ((= 13 cnthtxt)
+                 (setq directionwall "SSW"
+                       tableposition 12
+                 )
+                )
+                ((= 14 cnthtxt)
+                 (setq directionwall "WNW"
+                       tableposition 8
+                 )
+                )
+                ((= 15 cnthtxt)
+                 (setq directionwall "NNW"
+                       tableposition 6
+                 )
+                )
+              )
+              (setq txtoutwall (vla-addtext 
+                                 mspace
+                                 (strcat 
+                                   directionwall
+                                   ": "
+                                   (rtos 
+                                     (* (/ (nth cnthtxt htxt) 1000) 
+                                        heigtoutsidewall
+                                     )
+                                     2
+                                     2
+                                   )
+                                   " m2"
+                                 )
+                                 (vlax-3d-point pttxt)
+                                 200
+                               )
+              )
+              (setq pttxt (list (car pttxt) (- (cadr pttxt) 300)))
+              (vlax-put-property txtoutwall 'color 4)
+              ;*********** truyen data vao table****************
+              (vla-settext 
+                tableobject
+                (+ 2 roomcount)
+                tableposition
+                (rtos (* (/ (nth cnthtxt htxt) 1000) heigtoutsidewall) 
+                      2
+                      2
+                )
+              )
+            )
+          )
+          (setq cnthtxt (+ cnthtxt 1))
+        ) ;end repeat 1 htxt
+      )
+    ) ; end if outside wall
+    ;************ 1.6 Partition **************************
+    (if 
+      (setq ssgetpartition (ssget "_CP" 
+                                  listcp
+                                  '((-4 . "<OR")
+                                    (0 . "POLYLINE")
+                                    (0 . "LWPOLYLINE")
+                                    (-4 . "OR>")
+                                    (62 . 6)
+                                   )
+                           )
+      )
+      (progn 
+        (setq count1a 0)
+        (setq ttpartition1a 0)
+        (repeat (sslength ssgetpartition)  ;rp 1.6
+          (setq item1a (vlax-ename->vla-object (ssname ssgetpartition count1a)))
+          (setq length1a (vla-get-length item1a))
+          (setq ttpartition1a (+ ttpartition1a length1a))
+          (setq count1a (+ count1a 1))
+        ) ;end rp 1.6
+
+        ;********* 1.7 in vao trong zone *************
+        (setq partitionfn (* (/ ttpartition1a 1000) heightroom))
+      )
+      (setq partitionfn 0)
+    ) ;end if (ssgetpartition)
+    (setq aa (* (/ aa 1000000)))
+    (setq text (strcat "{\\C2;Area: " 
+                       (rtos aa 2 1)
+                       " m2}"
+                       "\\P"
+                       "{\\C6;Partition: "
+                       (rtos partitionfn 2 1)
+                       " m2}"
+               )
+    )
+    (setq txt (vla-addMtext mspace (vlax-3d-point inspoint) 0 text))
+    (vlax-put-property txt 'height 200)
+    (vla-settext 
+      tableobject
+      (+ 2 roomcount)
+      2
+      (rtos partitionfn 2 2)
+    )
+    (vla-settext tableobject (+ 2 roomcount) 1 (rtos aa 2 2))
+    (vla-settext 
+      tableobject
+      (+ 2 roomcount)
+      3
+      (rtos heightroom 2 2)
+    )
+    (vla-settext 
+      tableobject
+      (+ 2 roomcount)
+      4
+      (rtos heigtoutsidewall 2 2)
+    )
+    (setq roomcount (+ roomcount 1))
+  ) ;end rp enitys 1
+  (vla-SetAlignment tableobject acTitleRow acMiddleCenter)
+  (vla-SetAlignment tableobject acHeaderRow acMiddleCenter)
+  (vla-SetAlignment tableobject acDataRow acMiddleCenter)
+)					;end defun tn
+					;********* CT con: xac dinh diem vuong goc*********
+(defun perpendicular_from_point_to_line (lin1 lin2 p / x1 y1 x2 y2 x3 y3 k m n ret) 
+  ;returns point on a line (line1 line2) as a perpendicular projection from point p
+  (mapcar 'set '(x1 x2 x3) (mapcar 'car (list lin1 lin2 p)))
+  (mapcar 'set '(y1 y2 y3) (mapcar 'cadr (list lin1 lin2 p)))
+  (setq m (- (* (- y2 y1) (- x3 x1)) (* (- x2 x1) (- y3 y1)))
+        n (+ (* (- y2 y1) (- y2 y1)) (* (- x2 x1) (- x2 x1)))
+  )
+  (cond 
+    ((/= n 0.0)
+     (setq k   (/ m n)
+           ret (list (- x3 (* k (- y2 y1))) (+ y3 (* k (- x2 x1))))
+     )
+    )
+  )
+  ret
+)
+;; Insert Nth  -  Lee Mac
+;; Inserts an item at the nth position in a list.
+;; x - [any] Item to be inserted
+;; n - [int] Zero-based index at which to insert item
+;; l - [lst] List in which item is to be inserted
+
+(defun LM:insertnth (x n l / i) 
+  (setq i -1)
+  (apply 'append 
+         (mapcar 
+           '(lambda (a) 
+              (if (= n (setq i (1+ i))) 
+                (list x a)
+                (list a)
+              )
+            )
+           l
+         )
+  )
+)
+;;----------------------=={ Remove Nth }==--------------------;;
+;;                                                            ;;
+;;  Removes the item at the nth index in a supplied list      ;;
+;;------------------------------------------------------------;;
+;;  Author: Lee Mac, Copyright © 2011 - www.lee-mac.com       ;;
+;;------------------------------------------------------------;;
+;;  Arguments:                                                ;;
+;;  n - index of item to remove (zero based)                  ;;
+;;  l - list from which item is to be removed                 ;;
+;;------------------------------------------------------------;;
+;;  Returns:  List with item at index n removed               ;;
+;;------------------------------------------------------------;;
+
+(defun LM:RemoveNth (n l / i) 
+  (setq i -1)
+  (vl-remove-if '(lambda (x) (= (setq i (1+ i)) n)) l)
+)
